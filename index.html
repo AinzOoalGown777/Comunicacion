@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat de Video</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+        }
+        video {
+            width: 45%;
+            max-width: 400px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            margin: 10px;
+        }
+        #chat {
+            width: 90%;
+            max-width: 400px;
+            margin: 10px 0;
+            display: flex;
+            flex-direction: column;
+        }
+        #messages {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            background: #fff;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin-right: 10px;
+            flex: 1;
+        }
+        button {
+            padding: 10px;
+            border: none;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chat de Video y Mensajes</h1>
+    <div>
+        <video id="localVideo" autoplay muted></video>
+        <video id="remoteVideo" autoplay></video>
+    </div>
+    <div id="chat">
+        <div id="messages"></div>
+        <div style="display: flex;">
+            <input id="messageInput" type="text" placeholder="Escribe un mensaje...">
+            <button id="sendButton">Enviar</button>
+        </div>
+    </div>
+
+    <script>
+        let localStream;
+        let remoteStream;
+        let peerConnection;
+        const config = {
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" }, // Servidor STUN público para intercambio de red
+            ],
+        };
+
+        const localVideo = document.getElementById("localVideo");
+        const remoteVideo = document.getElementById("remoteVideo");
+        const messageInput = document.getElementById("messageInput");
+        const sendButton = document.getElementById("sendButton");
+        const messages = document.getElementById("messages");
+
+        // Crear canal de datos para chat
+        let dataChannel;
+
+        // Inicializar cámara y conexión
+        async function init() {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localVideo.srcObject = localStream;
+
+            peerConnection = new RTCPeerConnection(config);
+
+            // Añadir pistas locales
+            localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+
+            // Mostrar el video remoto
+            peerConnection.ontrack = (event) => {
+                if (!remoteStream) {
+                    remoteStream = new MediaStream();
+                    remoteVideo.srcObject = remoteStream;
+                }
+                remoteStream.addTrack(event.track);
+            };
+
+            // Configurar canal de datos
+            dataChannel = peerConnection.createDataChannel("chat");
+            dataChannel.onmessage = (event) => {
+                const msg = document.createElement("div");
+                msg.textContent = `Amigo: ${event.data}`;
+                messages.appendChild(msg);
+            };
+
+            // Añadir ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    console.log("Envía esta información al otro usuario:", JSON.stringify(peerConnection.localDescription));
+                }
+            };
+        }
+
+        // Enviar mensajes de chat
+        sendButton.addEventListener("click", () => {
+            const message = messageInput.value;
+            dataChannel.send(message);
+            const msg = document.createElement("div");
+            msg.textContent = `Tú: ${message}`;
+            messages.appendChild(msg);
+            messageInput.value = "";
+        });
+
+        // Crear oferta
+        async function createOffer() {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            console.log("Envía esta oferta al otro usuario:", JSON.stringify(offer));
+        }
+
+        // Responder a una oferta
+        async function handleOffer(offer) {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            console.log("Envía esta respuesta al otro usuario:", JSON.stringify(answer));
+        }
+
+        // Manejar respuesta
+        async function handleAnswer(answer) {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+
+        // Iniciar todo
+        init();
+
+        // Métodos disponibles para depuración (útiles al copiar/pegar ofertas y respuestas)
+        window.createOffer = createOffer;
+        window.handleOffer = handleOffer;
+        window.handleAnswer = handleAnswer;
+    </script>
+</body>
+</html>
